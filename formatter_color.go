@@ -10,11 +10,13 @@ const (
 
 // Color map
 var color = map[level]string{
-	INFO:  fmt.Sprintf(colorSeq, 32), // green
-	DEBUG: fmt.Sprintf(colorSeq, 34), // blue
-	WARN:  fmt.Sprintf(colorSeq, 33), // yellow
-	ERROR: fmt.Sprintf(colorSeq, 35), // pink
-	FATAL: fmt.Sprintf(colorSeq, 31), // red
+	DEBUG: fmt.Sprintf(colorSeq, 36), // Cyan
+	TRACE: fmt.Sprintf(colorSeq, 34), // Blue
+	INFO:  fmt.Sprintf(colorSeq, 32), // Green
+	WARN:  fmt.Sprintf(colorSeq, 33), // Yellow
+	ERROR: fmt.Sprintf(colorSeq, 31), // Red
+	PANIC: fmt.Sprintf(colorSeq, 35), // Magenta
+	FATAL: fmt.Sprintf(colorSeq, 37), // White
 }
 
 // ColorFormatter colors log messages with ASCI escape codes
