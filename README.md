@@ -1,4 +1,4 @@
-## Simple logger for fun
+## Simple logger for fun 📝
 
 <center>
 
