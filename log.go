@@ -67,6 +67,9 @@ func Warnf(format string, v ...interface{}) { defaultLogger.Warnf(format, v...) 
 // Errorf logs a formatted error level log to the console
 func Errorf(format string, v ...interface{}) { defaultLogger.Errorf(format, v...) }
 
+// Fatalf logs a formatted fatal level log to the console then os.Exit(1)
+func Fatalf(format string, v ...interface{}) { defaultLogger.Fatalf(format, v...) }
+
 // Panicf logs a formatted panic level log to the console.
 // The panic() function is called, which stops the ordinary flow of a goroutine.
 func Panicf(format string, v ...interface{}) { defaultLogger.Panicf(format, v...) }
