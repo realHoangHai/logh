@@ -1,123 +1,195 @@
 package logh
 
 import (
-	"io"
-	"log"
+	"fmt"
 	"os"
+	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Level type
-type level int
+type Level uint32
+type Fields map[string]interface{}
 
+// These are the different logging levels. You can set the logging level to log
+// on your instance of logger, obtained with `logrus.New()`.
 const (
-	// DEBUG level. Usually only enabled when debugging. Very verbose logging.
-	DEBUG level = iota
-	// TRACE level. Designates finer-grained informational events than the Debug.
-	TRACE
-	// INFO level. General operational entries about what's going on inside the application.
-	INFO
-	// WARN level. Non-critical entries that deserve eyes.
-	WARN
-	// ERROR level. Logs. Used for errors that should definitely be noted.
-	// Commonly used for hooks to send errors to an error tracking service.
-	ERROR
-	// PANIC level, highest level of severity. Logs and then calls panic with the
+	// PanicLevel level, highest level of severity. Logs and then calls panic with the
 	// message passed to Debug, Info, ...
-	PANIC
-	// FATAL level. Logs and then calls `logger.Exit(1)`.
-	// It will exit even if the logging level is set to Panic.
-	FATAL
-
-	flag = log.Ldate | log.Ltime
+	PanicLevel Level = iota
+	// FatalLevel level. Logs and then calls `logger.Exit(1)`. It will exit even if the
+	// logging level is set to Panic.
+	FatalLevel
+	// ErrorLevel level. Logs. Used for errors that should definitely be noted.
+	// Commonly used for hooks to send errors to an error tracking service.
+	ErrorLevel
+	// WarnLevel level. Non-critical entries that deserve eyes.
+	WarnLevel
+	// InfoLevel level. General operational entries about what's going on inside the
+	// application.
+	InfoLevel
+	// DebugLevel level. Usually only enabled when debugging. Very verbose logging.
+	DebugLevel
+	// TraceLevel level. Designates finer-grained informational events than the Debug.
+	TraceLevel
 )
 
-// Log level prefix map
-var prefix = map[level]string{
-	DEBUG: "DEBUG: ",
-	TRACE: "TRACE: ",
-	INFO:  "INFO: ",
-	WARN:  "WARN: ",
-	ERROR: "ERROR: ",
-	PANIC: "PANIC: ",
-	FATAL: "FATAL: ",
+const (
+	maximumCallerDepth int = 25
+	knownLogrusFrames  int = 4
+	timeFormat             = "2006-01-02 15:04:05.000"
+)
+
+var (
+	// Used for caller information initialisation
+	callerInitOnce     sync.Once
+	logrusPackage      string
+	minimumCallerDepth = 1
+	loggers            = make(map[string]*Logh)
+	loggersLock        sync.RWMutex
+
+	defaultLogger = NewLogger(DebugLevel, "default")
+)
+
+// Infof logs a formatted info level log to the console
+func Infof(format string, v ...interface{}) { defaultLogger.Infof(format, v...) }
+
+// Tracef logs a formatted debug level log to the console
+func Tracef(format string, v ...interface{}) { defaultLogger.Tracef(format, v...) }
+
+// Debugf logs a formatted debug level log to the console
+func Debugf(format string, v ...interface{}) { defaultLogger.Debugf(format, v...) }
+
+// Warnf logs a formatted warn level log to the console
+func Warnf(format string, v ...interface{}) { defaultLogger.Warnf(format, v...) }
+
+// Errorf logs a formatted error level log to the console
+func Errorf(format string, v ...interface{}) { defaultLogger.Errorf(format, v...) }
+
+// Fatalf logs a formatted fatal level log to the console then os.Exit(1)
+func Fatalf(format string, v ...interface{}) { defaultLogger.Fatalf(format, v...) }
+
+// Panicf logs a formatted panic level log to the console.
+// The panic() function is called, which stops the ordinary flow of a goroutine.
+func Panicf(format string, v ...interface{}) { defaultLogger.Panicf(format, v...) }
+
+func Init(level string) {
+	defaultLogger.SetLevel(logrus.Level(StringToLevel(level)))
 }
 
-// Loghs ...
-type Loghs map[level]LogH
+func StringToLevel(level string) Level {
+	l := logrus.DebugLevel
+	switch level {
+	case "trace":
+		l = logrus.TraceLevel
+	case "debug":
+		l = logrus.DebugLevel
+	case "info":
+		l = logrus.InfoLevel
+	case "warn":
+		l = logrus.WarnLevel
+	case "error":
+		l = logrus.ErrorLevel
+	}
+	return Level(l)
+}
 
-// New returns instance of Logger
-func New(out, errOut io.Writer, f Formatter) Loghs {
-	// Fall back to stdout if out not set
-	if out == nil {
-		out = os.Stdout
+type Logh struct {
+	logger *logrus.Logger
+	level  Level
+	prefix string
+}
+
+func (lh *Logh) Level() string {
+	switch lh.level {
+	case PanicLevel:
+		return "Panic"
+	case FatalLevel:
+		return "Fatal"
+	case ErrorLevel:
+		return "Error"
+	case WarnLevel:
+		return "Warn"
+	case InfoLevel:
+		return "Info"
+	case DebugLevel:
+		return "Debug"
+	case TraceLevel:
+		return "Trace"
+	}
+	return "Unkown"
+}
+
+func (lh *Logh) Prefix() string {
+	return lh.prefix
+}
+
+func (lh *Logh) SetLevel(level Level) {
+	lh.logger.SetLevel(logrus.Level(level))
+}
+
+func NewLogger(level Level, prefix string) *logrus.Logger {
+	loggersLock.RLock()
+	if logger, found := loggers[prefix]; found {
+		loggersLock.RUnlock()
+		return logger.logger
+	}
+	loggersLock.RUnlock()
+	l := logrus.New()
+	l.SetOutput(os.Stdout)
+	l.SetReportCaller(true)
+	l.SetLevel(logrus.Level(level))
+	l.SetFormatter(&TextFormatter{
+		Prefix:          prefix,
+		FullTimestamp:   true,
+		TimestampFormat: timeFormat,
+		ForceFormatting: true,
+	})
+
+	loggersLock.Lock()
+	loggers[prefix] = &Logh{
+		logger: l,
+		level:  level,
+		prefix: prefix,
+	}
+	loggersLock.Unlock()
+	return l
+}
+
+func NewLoggerWithFields(level Level, prefix string, fields Fields) *logrus.Logger {
+	if logger, found := loggers[prefix]; found {
+		return logger.logger
+	}
+	l := logrus.New()
+	l.SetOutput(os.Stdout)
+	l.SetReportCaller(true)
+	l.SetLevel(logrus.Level(level))
+	l.SetFormatter(&TextFormatter{
+		Prefix:          prefix,
+		Fields:          fields,
+		FullTimestamp:   true,
+		TimestampFormat: timeFormat,
+	})
+
+	loggers[prefix] = &Logh{
+		logger: l,
+		level:  level,
+		prefix: prefix,
 	}
 
-	// Fall back to stderr if errOut not set
-	if errOut == nil {
-		errOut = os.Stderr
+	return l
+}
+
+func SetLogLevel(prefix string, level Level) error {
+	if l, found := loggers[prefix]; found {
+		l.level = level
+		l.logger.SetLevel(logrus.Level(level))
+		return nil
 	}
-
-	// Fall back to DefaultFormatter if f not set
-	if f == nil {
-		f = new(DefaultFormatter)
-	}
-
-	l := make(map[level]LogH, 7)
-	l[DEBUG] = &Logger{lvl: DEBUG, formatter: f, logh: log.New(out, f.GetPrefix(DEBUG)+prefix[DEBUG], flag)}
-	l[TRACE] = &Logger{lvl: INFO, formatter: f, logh: log.New(out, f.GetPrefix(TRACE)+prefix[TRACE], flag)}
-	l[INFO] = &Logger{lvl: INFO, formatter: f, logh: log.New(out, f.GetPrefix(INFO)+prefix[INFO], flag)}
-	l[WARN] = &Logger{lvl: INFO, formatter: f, logh: log.New(out, f.GetPrefix(WARN)+prefix[WARN], flag)}
-	l[ERROR] = &Logger{lvl: INFO, formatter: f, logh: log.New(errOut, f.GetPrefix(ERROR)+prefix[ERROR], flag)}
-	l[PANIC] = &Logger{lvl: INFO, formatter: f, logh: log.New(errOut, f.GetPrefix(PANIC)+prefix[PANIC], flag)}
-	l[FATAL] = &Logger{lvl: INFO, formatter: f, logh: log.New(errOut, f.GetPrefix(FATAL)+prefix[FATAL], flag)}
-	return Loghs(l)
+	return fmt.Errorf("logger [%v] not found", prefix)
 }
 
-// Logger ...
-type Logger struct {
-	lvl       level
-	formatter Formatter
-	logh      LogH
-}
-
-// Print ...
-func (w *Logger) Print(v ...interface{}) {
-	v = w.formatter.Format(w.lvl, v...)
-	v = append(v, w.formatter.GetSuffix(w.lvl))
-	w.logh.Print(v...)
-}
-
-// Printf ...
-func (w *Logger) Printf(format string, v ...interface{}) {
-	suffix := w.formatter.GetSuffix(w.lvl)
-	v = w.formatter.Format(w.lvl, v...)
-	w.logh.Printf("%s"+format+suffix, v...)
-}
-
-// Fatal ...
-func (w *Logger) Fatal(v ...interface{}) {
-	v = w.formatter.Format(w.lvl, v...)
-	v = append(v, w.formatter.GetSuffix(w.lvl))
-	w.logh.Fatal(v...)
-}
-
-// Fatalf ...
-func (w *Logger) Fatalf(format string, v ...interface{}) {
-	suffix := w.formatter.GetSuffix(w.lvl)
-	v = w.formatter.Format(w.lvl, v...)
-	w.logh.Fatalf("%s"+format+suffix, v...)
-}
-
-// Panic ...
-func (w *Logger) Panic(v ...interface{}) {
-	v = w.formatter.Format(w.lvl, v...)
-	v = append(v, w.formatter.GetSuffix(w.lvl))
-	w.logh.Fatal(v...)
-}
-
-// Panicf ...
-func (w *Logger) Panicf(format string, v ...interface{}) {
-	suffix := w.formatter.GetSuffix(w.lvl)
-	v = w.formatter.Format(w.lvl, v...)
-	w.logh.Panicf("%s"+format+suffix, v...)
+func GetLoggers() map[string]*Logh {
+	return loggers
 }
