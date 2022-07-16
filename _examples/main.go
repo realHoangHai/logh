@@ -8,7 +8,7 @@ import (
 func main() {
 	err := errors.New("wrong")
 	lo := logh.NewLogh(logh.DebugLevel, "hailth")
-	lo.Println(err)
+	lo.Infof("%s", err)
 	// --------------------------------------------------
 	logh.Errorf("error: %v", err)
 	logh.Infof("info: success")
