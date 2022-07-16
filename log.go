@@ -46,36 +46,36 @@ var (
 	callerInitOnce     sync.Once
 	logrusPackage      string
 	minimumCallerDepth = 1
-	loggers            = make(map[string]*Logh)
-	loggersLock        sync.RWMutex
+	loghs              = make(map[string]*Logh)
+	loghMutex          sync.RWMutex
 
-	defaultLogger = NewLogger(DebugLevel, "default")
+	defaultLogh = NewLogh(DebugLevel, "default")
 )
 
 // Infof logs a formatted info level log to the console
-func Infof(format string, v ...interface{}) { defaultLogger.Infof(format, v...) }
+func Infof(format string, v ...interface{}) { defaultLogh.Infof(format, v...) }
 
 // Tracef logs a formatted debug level log to the console
-func Tracef(format string, v ...interface{}) { defaultLogger.Tracef(format, v...) }
+func Tracef(format string, v ...interface{}) { defaultLogh.Tracef(format, v...) }
 
 // Debugf logs a formatted debug level log to the console
-func Debugf(format string, v ...interface{}) { defaultLogger.Debugf(format, v...) }
+func Debugf(format string, v ...interface{}) { defaultLogh.Debugf(format, v...) }
 
 // Warnf logs a formatted warn level log to the console
-func Warnf(format string, v ...interface{}) { defaultLogger.Warnf(format, v...) }
+func Warnf(format string, v ...interface{}) { defaultLogh.Warnf(format, v...) }
 
 // Errorf logs a formatted error level log to the console
-func Errorf(format string, v ...interface{}) { defaultLogger.Errorf(format, v...) }
+func Errorf(format string, v ...interface{}) { defaultLogh.Errorf(format, v...) }
 
 // Fatalf logs a formatted fatal level log to the console then os.Exit(1)
-func Fatalf(format string, v ...interface{}) { defaultLogger.Fatalf(format, v...) }
+func Fatalf(format string, v ...interface{}) { defaultLogh.Fatalf(format, v...) }
 
 // Panicf logs a formatted panic level log to the console.
 // The panic() function is called, which stops the ordinary flow of a goroutine.
-func Panicf(format string, v ...interface{}) { defaultLogger.Panicf(format, v...) }
+func Panicf(format string, v ...interface{}) { defaultLogh.Panicf(format, v...) }
 
 func Init(level string) {
-	defaultLogger.SetLevel(logrus.Level(StringToLevel(level)))
+	defaultLogh.SetLevel(StringToLevel(level))
 }
 
 func StringToLevel(level string) Level {
@@ -129,13 +129,45 @@ func (lh *Logh) SetLevel(level Level) {
 	lh.logger.SetLevel(logrus.Level(level))
 }
 
-func NewLogger(level Level, prefix string) *logrus.Logger {
-	loggersLock.RLock()
-	if logger, found := loggers[prefix]; found {
-		loggersLock.RUnlock()
-		return logger.logger
+func (lh *Logh) Panicf(format string, v ...interface{}) {
+	lh.logger.Panicf(format, v...)
+}
+
+func (lh *Logh) Fatalf(format string, v ...interface{}) {
+	lh.logger.Fatalf(format, v...)
+}
+
+func (lh *Logh) Errorf(format string, v ...interface{}) {
+	lh.logger.Errorf(format, v...)
+}
+
+func (lh *Logh) Warnf(format string, v ...interface{}) {
+	lh.logger.Warnf(format, v...)
+}
+
+func (lh *Logh) Debugf(format string, v ...interface{}) {
+	lh.logger.Debugf(format, v...)
+}
+
+func (lh *Logh) Tracef(format string, v ...interface{}) {
+	lh.logger.Tracef(format, v...)
+}
+
+func (lh *Logh) Infof(format string, v ...interface{}) {
+	lh.logger.Infof(format, v...)
+}
+
+func NewLogh(level Level, prefix string) *Logh {
+	loghMutex.RLock()
+	if logher, found := loghs[prefix]; found {
+		loghMutex.RUnlock()
+		return &Logh{
+			logger: logher.logger,
+			level:  level,
+			prefix: prefix,
+		}
 	}
-	loggersLock.RUnlock()
+	loghMutex.RUnlock()
 	l := logrus.New()
 	l.SetOutput(os.Stdout)
 	l.SetReportCaller(true)
@@ -147,19 +179,20 @@ func NewLogger(level Level, prefix string) *logrus.Logger {
 		ForceFormatting: true,
 	})
 
-	loggersLock.Lock()
-	loggers[prefix] = &Logh{
+	loghMutex.Lock()
+	lh := &Logh{
 		logger: l,
 		level:  level,
 		prefix: prefix,
 	}
-	loggersLock.Unlock()
-	return l
+	loghs[prefix] = lh
+	loghMutex.Unlock()
+	return lh
 }
 
-func NewLoggerWithFields(level Level, prefix string, fields Fields) *logrus.Logger {
-	if logger, found := loggers[prefix]; found {
-		return logger.logger
+func NewLoghWithFields(level Level, prefix string, fields Fields) *Logh {
+	if logher, found := loghs[prefix]; found {
+		return logher
 	}
 	l := logrus.New()
 	l.SetOutput(os.Stdout)
@@ -172,24 +205,24 @@ func NewLoggerWithFields(level Level, prefix string, fields Fields) *logrus.Logg
 		TimestampFormat: timeFormat,
 	})
 
-	loggers[prefix] = &Logh{
+	lh := &Logh{
 		logger: l,
 		level:  level,
 		prefix: prefix,
 	}
-
-	return l
+	loghs[prefix] = lh
+	return lh
 }
 
-func SetLogLevel(prefix string, level Level) error {
-	if l, found := loggers[prefix]; found {
-		l.level = level
-		l.logger.SetLevel(logrus.Level(level))
+func SetLoghLevel(prefix string, level Level) error {
+	if logher, found := loghs[prefix]; found {
+		logher.level = level
+		logher.logger.SetLevel(logrus.Level(level))
 		return nil
 	}
 	return fmt.Errorf("logger [%v] not found", prefix)
 }
 
-func GetLoggers() map[string]*Logh {
-	return loggers
+func GetLoghs() map[string]*Logh {
+	return loghs
 }

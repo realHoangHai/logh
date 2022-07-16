@@ -7,7 +7,7 @@ import (
 
 func main() {
 	err := errors.New("wrong")
-	lo := logh.NewLogger(logh.DebugLevel, "hailth")
+	lo := logh.NewLogh(logh.DebugLevel, "hailth")
 	lo.Println(err)
 	// --------------------------------------------------
 	logh.Errorf("error: %v", err)
